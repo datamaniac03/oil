@@ -1,0 +1,568 @@
+#### Oil optimization SCRIPT
+
+#### 00. libraries and delete env ####
+rm(list = ls())
+require(gdata)
+require(igraph)
+require(WriteXLS)
+
+#### 01. read ####
+rutas = read.xls ("Servicio Recorredores_v03.xlsx", sheet = 2, header = TRUE)
+puntos = read.xls ("Servicio Recorredores_v03.xlsx", sheet = 3, header = TRUE)
+datos = read.xls ("Servicio Recorredores_v03.xlsx", sheet = 1, header = TRUE)
+
+#labor <- as.numeric(as.character(datos[2,3]))
+labor <- 26
+tiempo_jor <- 225
+
+
+#clean up
+
+rutas <- rutas[,c(3:6,2)]
+rutas$Ruta <- gsub('\xed','i',rutas$Ruta)
+
+
+colnames(rutas)<- c('origen','destino','distancia','tiempo')
+puntos <- puntos[puntos$Activo=='Si'&puntos$Categoria!='Fuera'&puntos$Categoria!='#N/A',c(2,5,6)]
+
+#all point in at least one route
+punt <- c(as.character(rutas$origen),as.character(rutas$destino))
+not.present <- !(puntos$Identif %in% punt)
+#show those not present.
+puntos$Identif[not.present]
+
+#keep only those points present in at least one route
+puntos <- puntos[!not.present,]
+
+#rownames puntos
+rownames(puntos) <- puntos$Identif
+
+#### 02. explore graph ####
+g <- graph_from_edgelist(as.matrix(rutas[,1:2]),directed = FALSE)
+comp <- components(g)
+
+#remove not connected points in the graph
+puntos.not_connect <- names(comp$membership[comp$membership!=1])
+rutas <- rutas[!(rutas$origen %in% puntos.not_connect),]
+rutas[!(rutas$destino %in% puntos.not_connect),]
+
+#declare again the graph
+g <- graph_from_edgelist(as.matrix(rutas[,1:2]),directed = FALSE)
+
+#remove not connected points in the node list
+puntos <- puntos[!(puntos$Identif %in% puntos.not_connect),]
+
+# calculate all shortest paths from base
+sp <- shortest.paths(g, 1,
+                   weights = rutas$tiempo)
+
+# declare a matrix of sp
+sp.m <- matrix (0, ncol=nrow(puntos)+1,nrow=nrow(puntos)+1)
+rownames(sp.m) <- c('Base',as.character(puntos$Identif))
+colnames(sp.m) <- c('Base',as.character(puntos$Identif))
+
+# calculate sp matrix (can be improved)
+for (i in rownames(sp.m)) {
+  print(i)
+  id_i <- as.numeric(V(g)[i])
+  for (j in colnames(sp.m)) {
+    id_j <- as.numeric(V(g)[j])
+    if (sp.m[i,j] ==0) {
+      s <- shortest.paths(g, id_i, id_j, weights = rutas$tiempo)
+      sp.m[i,j] <- s
+      sp.m[j,i] <- s
+    }
+  }
+}
+
+#### 03. functions ####
+
+#create a list of times for each point
+tiempos.detail <- function(route) {
+  #Chequed!!
+  n.points <- length(route)
+  times <- rep(0,(n.points+1))
+  times[1] <- sp.m ['Base',route[1]]
+  times[n.points+1] <- sp.m [route[n.points],'Base']
+  if (n.points >1) {
+    for (i in 2:n.points) {
+      times[i] <-  sp.m [route[i-1],route[i]]
+    }
+  } 
+  return(times/60)
+}
+
+tiempos.total <- function(route) {
+  #chequed!
+  n.points <- length(route)
+  #print(c('t.t',as.character(n.points)))
+
+  t.transport <- sum(tiempos.detail(route))
+  t.pozo <- labor*n.points
+  return(c(t.transport,t.pozo,n.points,tiempo_jor-t.transport-t.pozo))
+}
+
+#create a list of times resulting of removing each point
+tiempos.saved <- function(route) {
+  #checked
+  n.points <- length(route)
+  times.s <- rep(0,n.points)
+  times <- tiempos.detail(route)
+  if (n.points==1){
+    times.s[1] <- sum(times)
+  } else {
+    #first element
+    times.s[1] <- times [1] + times[2] - sp.m ['Base', route[2]]/60 
+    #last element
+    times.s[n.points] <- times [n.points] + times[n.points+1] - sp.m [route[n.points-1],'Base']/60
+    if (n.points>2) {
+      for (i in 2:(n.points-1)) {
+        times.s[i] <- times [i] + times[i +1] - sp.m [route[i-1],route[i+1]]/60
+      }
+    }
+  }
+  times.s [times.s<0] <- 0
+  return (times.s)
+}
+
+convert.index <- function(i) {
+  if (i<1) {
+    i <- i + 21
+  }
+  if (i>21) {
+    i <- i - 21
+  }
+  return (i)
+}
+
+mask.visitas <- function(visitas.n) {
+  #input binary vector
+  #boolean mask
+  cat <- sum(visitas.n)
+  temp <- rep(0,21)
+  
+  which(visitas.n==1)
+  #pozos A
+  if (cat==2) {
+    gap <- 5
+  } else {
+    gap <- 7
+  }
+  
+  #loop among days
+  for (d in days.id[which(visitas.n==1)]) {
+    for (j in (d-gap):(d+gap)) {
+      temp[convert.index(j)] <- 1
+    }
+  }
+  return(which(!rep(temp,rep(2,21))[1:41]))
+}
+
+tiempos.2add <- function(route,node) {
+  n.points <- length(route)  
+  #print(c('t.2a',n.points))
+  times.2 <- rep(0,n.points+1)
+  times.d <- tiempos.detail(route)
+  times.2[1] <- sp.m['Base',node] + sp.m[node, route[1]]
+  times.2[n.points+1] <- sp.m[route[n.points],node] + sp.m[node, 'Base'] 
+  if (n.points>1) {
+    for (i in 2:n.points) {
+      times.2[i] <- sp.m[route[i-1],node] + sp.m[node,route[i]]
+    }
+  }
+  return(times.2/60-times.d)
+}
+
+where2add <- function(route,node, saving) {
+  print('where2add')
+  t2 <- tiempos.2add(route, node)
+  
+  if (node %in% route) {
+    print('node already in route')
+    return (0)
+  } else if (sum(saving > t2)==0) {
+    print('cost greather than saving')
+    return (0)
+  } else {
+    td <- tiempos.total(route)[4]
+    pos <- sample(which(saving > t2),1)
+    if (td < t2[pos] + labor) {
+      print('time increases the 240 min')
+      return (0)
+    } else {
+      print('to be added')
+      return (pos)
+    }
+  }
+}
+
+add.node <- function  (route,node, position) {
+  route <- append (route, node, position-1)
+  return (route)
+}
+
+remove.node <- function (route,position) {
+  route <- route [-position]
+  return (route)
+}
+
+#### x. start modeling initiation (local search) ####
+# A 3 times, B 2 times, C, D, X 1time
+set.seed(1)
+
+# select in the bag 
+#order by category
+puntos <- puntos[order(puntos$Categoria),]
+
+#how many are of each category:
+#366 puntos
+#89 A
+#83 B
+
+sol <- list()
+
+#### x. initial A posoz ####
+# initial solution each turno selects 4 points.(adjust according to the length of bag)
+# 41 half-days, odds-mornings even-evenings.
+# initial solution A) 2 cicles per half with 4 A nodes
+bag<- as.character(puntos$Identif[puntos$Categoria=='A'])
+
+jornadas <- NULL
+jor <- 1
+
+#matrix of visitas
+visitas <- matrix(0, ncol= nrow(puntos), nrow = 41)
+colnames(visitas) <- puntos$Identif
+
+for (i in seq(1,88,8)) {
+  #two cicles earch hjor
+  c1 <- c(bag[i],bag[i+1],bag[i+2],bag[i+3])
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor)
+  
+  visitas [jor,c1 ] <- 1
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor+14)
+  
+  visitas [jor+14,c1 ] <- 1
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor+28)
+  
+  visitas [jor+28,c1] <- 1
+  
+  #second cycle
+  c2 <- c(bag[i+4],bag[i+5],bag[i+6],bag[i+7])
+  
+  sol <- append (sol, list(c2))
+  jornadas <- c(jornadas,jor)
+  
+  visitas [jor,c2] <- 1
+  
+  sol <- append (sol, list(c2))
+  jornadas <- c(jornadas,jor+14)
+  
+  visitas [jor+14,c2] <- 1
+  
+  sol <- append (sol, list(c2))
+  jornadas <- c(jornadas,jor+28)
+  
+  visitas [jor+28,c2] <- 1
+  
+  #add 1 to jor
+  jor <- jor +1  
+}
+#needs to add the 89
+c3 <- bag[89]
+jor <- 12
+
+#complete the cylce
+sol <- append (sol, list(c3))
+jornadas <- c(jornadas,jor)
+visitas [jor,c3 ] <- 1
+sol <- append (sol, list(c3))
+jornadas <- c(jornadas,jor+14)
+visitas [jor+14,c3 ] <- 1
+sol <- append (sol, list(c3))
+jornadas <- c(jornadas,jor+28)
+visitas [jor+28,c3 ] <- 1
+
+#verify
+colSums(visitas)
+
+#### x. initial B pozos ####
+
+bag<- as.character(puntos$Identif[puntos$Categoria=='B'])
+
+jor <- 1
+
+# 83 B pozos
+for (i in seq(1,80,8)) {
+  #two cicles earch hjor
+  c1 <- c(bag[i],bag[i+1],bag[i+2],bag[i+3])
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor)
+  
+  visitas [jor,c1 ] <- 1
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor+20)
+  
+  visitas [jor+20,c1 ] <- 1
+  
+  #second cycle
+  c2 <- c(bag[i+4],bag[i+5],bag[i+6],bag[i+7])
+  
+  sol <- append (sol, list(c2))
+  jornadas <- c(jornadas,jor)
+  
+  visitas [jor,c2] <- 1
+  
+  sol <- append (sol, list(c2))
+  jornadas <- c(jornadas,jor+20)
+  
+  visitas [jor+20,c2] <- 1
+  
+  
+  #add 1 to jor
+  jor <- jor +1  
+}
+
+# add 81 82 83
+c3 <- c(bag[81],bag[82],bag[83])
+jor <- 21
+sol <- append (sol, list(c3))
+jornadas <- c(jornadas,jor)
+
+visitas [jor,c3] <- 1
+
+sol <- append (sol, list(c3))
+jornadas <- c(jornadas,jor+20)
+
+visitas [jor+20,c3] <- 1
+
+colSums(visitas)
+
+#### x. initial CDEX pozos ####
+
+bag<- as.character(puntos$Identif[puntos$Categoria!='A'&puntos$Categoria!='B'])
+
+# 194 pozos 
+#jor <- 41 #from top to bottom
+
+# 83 B pozos
+for (i in seq(1,192,4)) {
+  #two cicles earch hjor
+  #select the jor with lower cicles
+  aa <- tabulate(jornadas)
+  names(aa) <- 1:41  
+  jor <- as.numeric(names(sort(aa)[1]))
+  
+  #same as before
+  c1 <- c(bag[i],bag[i+1],bag[i+2],bag[i+3])
+  
+  sol <- append (sol, list(c1))
+  jornadas <- c(jornadas,jor)
+  
+  visitas [jor,c1 ] <- 1
+
+}
+
+c2 <- c(bag[193],bag[194])
+
+aa <- tabulate(jornadas)
+names(aa) <- 1:41  
+jor <- as.numeric(names(sort(aa)[1]))
+
+sol <- append (sol, list(c2))
+jornadas <- c(jornadas,jor)
+
+visitas [jor,c2 ] <- 1
+
+#### 04. start modeling loop (local search) ####
+
+#calculates time and reshape as matrix
+t.m <- do.call(rbind, lapply(sol,tiempos.total))
+colnames(t.m) <- c('t.transport','t.pozo','n.points','av.time')
+
+#decalare a vector with the days (len 41)
+days.id <- c(rep(1:20,rep(2,20)),21)
+
+for (k in 1:20000) {
+#define global evaluations of solutions
+#initial diagnisys
+turnos <- nrow(t.m)
+tiempo.ocioso <- sum(t.m[,'av.time'])
+print(c('k:',k,'-turnos:',turnos,'-tiempo.ocioso:',tiempo.ocioso))
+
+#select a tour to extract one point. (proportional to 9-n.points)
+aa <- tabulate(jornadas)
+names(aa) <- 1:41  
+aa <- aa-3
+fact <- 1
+if (k>3000) {
+  fact <- 2
+}
+if (sum(aa<=0)==41){
+  aa <- aa+1
+  fact <- 1
+}
+aa[aa<0] <- 0
+
+#select a jor to extract
+jor2extract <- as.numeric(sample(names(aa), 1, prob = aa))
+print(c('jor2e: ', jor2extract))
+
+#select the tour to extract 
+tours2e <- which(jornadas==jor2extract)
+print(c('tours2e' ,tours2e ))
+
+tour2extract <- sample(tours2e,1, prob=t.m[tours2e,'av.time'])
+print(c('tour2extract' ,tour2extract ))
+#declare route to work
+route2e <- sol[[tour2extract]]
+
+#calculate the times saved
+t.s <- tiempos.saved(route2e)
+
+#select the point to extract
+pos2e <- sample(1:length(route2e),1, prob = t.s)
+node <- route2e[pos2e]
+
+#calculate savings
+saving <- t.s[pos2e] 
+
+
+saving <- saving*fact
+
+
+#where to add the node?
+#case if it is A or B
+
+if (puntos[node,'Categoria']=='A'|puntos[node,'Categoria']=='B') {
+
+  visitas.node <- visitas[,node]
+  print (visitas.node)
+  
+  #remove the actual point
+  visitas.node[jor2extract]<-0
+  
+  #lenth 41 ones where visits
+  
+  jor2add <- mask.visitas(visitas.node)
+  tour2add.id <- which(jornadas %in% jor2add)
+  
+  print (tour2add.id)
+  print (node)
+  print (visitas.node)
+  
+  tour2add <- sample(tour2add.id, 1,prob=t.m[tour2add.id,'av.time'])
+  print ('worked')
+} else {
+  tour2add <- sample(1:nrow(t.m), 1,prob=t.m[,'av.time'])
+}
+
+route2a <- sol[[tour2add]]
+
+pos2a  <- where2add(route2a,node,saving)
+
+  if (pos2a>0) {
+    #add the node in tour2a
+    sol[[tour2add]] <- add.node(sol[[tour2add]],node, pos2a)
+    #update visitas
+    if (jornadas[tour2add]!=jornadas[tour2extract]) {
+      visitas[jornadas[tour2add],node] <- 1
+      try(if(visitas[jornadas[tour2extract],node]!=1) stop ("something went wrong"))
+      visitas[jornadas[tour2extract],node]<- 0
+    }
+    
+    #remove node from tour2extract
+    sol[[tour2extract]] <- remove.node(sol[[tour2extract]],pos2e)
+    #update visitas
+    
+    #what happens whan the sol tourtoextract is empty.
+    if (length(sol[[tour2extract]])==0){
+      #print('removing the last node')
+      #remove prom sol and from t.m
+      sol[[tour2extract]] = NULL
+      t.m <- t.m[-tour2extract,]
+      jornadas <- jornadas[-tour2extract]
+    } else { #tour2extract is not empty
+      #recalculate tm in tour2extract
+      t.m[tour2extract,] <- tiempos.total(sol[[tour2extract]])
+    } 
+    #continues all cases where pos>0
+    #recalculate the t.m add
+    t.m[tour2add,] <- tiempos.total(sol[[tour2add]])
+  } else {
+    print('adding not possible. all keeps the same')
+  }
+  print(nrow(t.m))
+  print(sum(t.m[,'av.time']))
+  print(sum(colSums(visitas)==patron)==366)
+} #for k
+
+#### 0. Solution analysis and display ####
+
+data.out <- c(jornadas)
+
+nr <- length(jornadas)
+pozos.trab <- rep(NA,nr)
+
+#print the solution
+for (i in 1:nr){
+  pozos.trab[i] <- paste (sol[[i]], collapse=',')
+}
+
+data.out <- cbind.data.frame(data.out,pozos.trab)
+
+data.out <- cbind.data.frame(data.out,t.m)
+
+complete.lines <- function(route) {
+  route.lines <- rep(NA, length(route)*2-1)
+  route.lines[1] <- route[1]
+  for (i in 2:length(route)){
+    l <- rutas[rutas$Punto.Origen==route[i-1]&rutas$Punto.Destino==route[i],'Ruta']
+    if (length(l)==0) {
+      l <- rutas[rutas$Punto.Origen==route[i]&rutas$Punto.Destino==route[i-1],'Ruta']
+    }
+    if (length(l)>1) { print (l)}
+    route.lines[i*2-2] <- l[1]
+    
+    route.lines[i*2-1] <- route[i]
+  }
+  return(route.lines)
+}
+
+#print the route detail 
+detailed.route <- function(route){
+  
+  route.d1 <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)["Base"]),as.numeric(V(g)[route[1]]), weights = rutas$tiempo)$vpath[[1]]))
+  
+  
+  route.d1.p <- paste(complete.lines(route.d1),collapse=",")
+  route.tot <- route.d1.p
+  for (i in 2:length(route)){
+    route.di <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)[route[i-1]]),as.numeric(V(g)[route[i]]), weights = rutas$tiempo)$vpath[[1]]))
+    route.di.p <- paste(complete.lines(route.di),collapse=",")
+    route.tot <- paste(route.tot, route.di.p,sep=";")
+  }
+  route.df <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)[route[length(route)]]),as.numeric(V(g)["Base"]), weights = rutas$tiempo)$vpath[[1]]))
+  route.df.p <- paste(complete.lines(route.df),collapse=",")
+  route.tot <- paste(route.tot, route.df.p,sep=";")
+}
+
+detailed <- rep(NA,nr)
+
+for (i in 1:length(sol)){
+  detailed[i] <- detailed.route(sol[[i]])
+}
+
+data.out <- cbind.data.frame(data.out,detailed)
+
+#export data.out to a excel
+write.xlsx(data.out, "modelo_resuelto.xlsx")
+
