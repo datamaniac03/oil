@@ -349,13 +349,13 @@ if (k>0.6*iterations) {
   max.jor <- max(tab.jor)
   if (max.jor < min.input) {
     min.input <- max.jor
-    print (paste(c('found solution of ',max.jor,' jornadas.'),sep='') )
+    print (paste(c('found solution of ',max.jor,' cylces/jornadas.'),sep='') )
     accept <- readline(prompt="Accept? (y/n): ")
     if (accept =='y') {break}
   }
   if (k==iterations) { 
-    print (paste(c('Max. iter reached. Solution: ',max.jor,' jornadas.'),sep='') )
-    accept <- readline(prompt="Accept this solution (y) or continue exploring (n)? (y/n): ")
+    print (paste(c('Max. iter reached. Solution: ',max.jor,' cycles/jornadas.'),sep='') )
+    accept <- readline(prompt="Accept this solution (press: y) or continue exploring (press: n)? (y/n): ")
     k <- 1
     if (accept =='y') {break} 
     
