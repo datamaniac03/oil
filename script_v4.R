@@ -12,6 +12,8 @@ require(WriteXLS)
 rutas = read.xls ("Servicio Recorredores_v04.xlsx", sheet = 2, header = TRUE)
 puntos = read.xls ("Servicio Recorredores_v04.xlsx", sheet = 3, header = TRUE)
 datos = read.xls ("Servicio Recorredores_v04.xlsx", sheet = 1, header = TRUE)
+coord = read.xls("Coordenadas.xlsx",sheet=1, header = TRUE)
+
 
 #labor <- as.numeric(as.character(datos[2,3]))
 labor <- as.numeric(as.character(datos[2,'Valor']))
@@ -604,11 +606,15 @@ detailed.route <- function(route){
   
   route.d1.p <- paste(complete.lines(route.d1),collapse=",")
   route.tot <- route.d1.p
-  for (i in 2:length(route)){
-    route.di <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)[route[i-1]]),as.numeric(V(g)[route[i]]), weights = rutas$tiempo)$vpath[[1]]))
-    route.di.p <- paste(complete.lines(route.di),collapse=",")
-    route.tot <- paste(route.tot, route.di.p,sep=";")
+  
+  if (length(route)>1) {
+    for (i in 2:length(route)){
+      route.di <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)[route[i-1]]),as.numeric(V(g)[route[i]]), weights = rutas$tiempo)$vpath[[1]]))
+      route.di.p <- paste(complete.lines(route.di),collapse=",")
+      route.tot <- paste(route.tot, route.di.p,sep=";")
+    }
   }
+  
   route.df <- rownames(as.matrix(get.shortest.paths(g,as.numeric(V(g)[route[length(route)]]),as.numeric(V(g)["Base"]), weights = rutas$tiempo)$vpath[[1]]))
   route.df.p <- paste(complete.lines(route.df),collapse=",")
   route.tot <- paste(route.tot, route.df.p,sep=";")
@@ -643,6 +649,27 @@ turno [(data.out$jornada+1)/2 == day] <- 'manana'
 data.out <- cbind.data.frame(cuadrilla,data.out)
 data.out <- cbind.data.frame(turno,data.out)
 data.out <- cbind.data.frame(day,data.out)
+
+#add coord
+rownames(coord)<-coord$Puntos.de.Operacion 
+
+get.coord <- function (det.rout) {
+  segments <- strsplit(det.rout,';')[[1]]
+  det.rout.coord <- NULL
+  for (seg in segments) {
+    nodes <- strsplit(seg,',')[[1]]
+    det.rout.coord <- paste(det.rout.coord,paste(coord[nodes,2], collapse=','),sep=';')
+  }
+  det.rout.coord <- substring(det.rout.coord, 2)
+  return(det.rout.coord)
+}
+
+det.coord <- rep(NA,length(detailed)) 
+for (i in 1:length(detailed)){
+  det.coord[i] <- get.coord(detailed[i])
+}
+
+data.out <- cbind.data.frame(data.out,det.coord)
 
 #export data.out to a excel
 WriteXLS(data.out, "modelo_resuelto.xlsx")
