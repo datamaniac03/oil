@@ -8,6 +8,7 @@ cat("\f")
 require(xlsx)
 require(gdata)
 require(igraph)
+set.seed(10)
 
 #### 01. read files with tareas & parameters ####
 #parameters
@@ -28,6 +29,8 @@ target <- c('cor-alta','cor-media','pred-alta','prev-mant-alta','cor-baja','pred
 target_out_sorted <- target[c(1:2,5,3,6,4,7)]
 
 
+
+
 fix_format <- function(tareas_sheet) {
   tareas_out <- tareas_sheet[-1,c(1,2,3,6:14,17)]
   colnames(tareas_out) <- c('descrip','q1y','tiempo','perc_Planta_pet','perc_Planta_agua','perc_Planta_gas',
@@ -41,6 +44,13 @@ fix_format <- function(tareas_sheet) {
   tareas_out$type <- as.character(tareas_out$type)
   tareas_out <- tareas_out[tareas_out$type %in% target,]
   
+  #convert percentage into number
+  
+  perc_names <- c('perc_Planta_pet','perc_Planta_agua','perc_Planta_gas',
+                  'perc_bat','perc_pozo','perc_sat','perc_subest','perc_gasoducto','perc_moto')
+  for (name in perc_names){
+    tareas_out[,name] <- as.numeric(sub("%", "",tareas_out[,name]))
+  }
   return(tareas_out)
 }
 
@@ -117,7 +127,7 @@ for (tar_id in 1:3) {
   tareas <- tareas_loop[[tar_id]]
   sheet_name <- sheet_name_loop[tar_id]
   print(sheet_name)
-  
+
 #### 06. intitialize list of nodes: pozos, baterias and plantas ####
 cor_id <- tareas$type %in% c('cor-alta','cor-media','cor-baja')
 tareas_c <- tareas[cor_id,]
@@ -428,7 +438,7 @@ for (num_cuad in num_cuad_loop) {
     #print(day)
     #condition if labor day
     if (day %in% labor_days_id) {
-    
+      #print (day)
       daily_stack <- create_daily_record(stack_p,stack_c,stack_reprog, day,num_cuad)
       stack_reprog <- daily_stack[[2]]
       result_stack <- rbind(result_stack,daily_stack[[1]])
