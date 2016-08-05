@@ -735,3 +735,5 @@ addDataFrame(data.out, newSheet)
 saveWorkbook(wb, "Modelo de sensibilidad vR Final2.xlsm")
 
 tapply(data.out$av.time,data.out$cuadrilla,sum)
+
+#todos: una categoria visitas >0, que no tenga posos asignados
