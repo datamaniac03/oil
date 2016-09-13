@@ -23,8 +23,8 @@ labor_days_id <-  (1:total_days)[labor_days_bool]
 
 #setwd("C:/Users/mferrari/Desktop/Mantenimiento Xavier")
 tareas_log <- read.xls ("Modelo Logística vDraft(II).xlsx", sheet = 2, header = TRUE)
-tareas_log <- tareas_log[,c(1,4:7,9:11)]
-colnames(tareas_log) <- c('grupo','prioridad','tarea','unidad','demanda','tiempo_car-des',
+tareas_log <- tareas_log[,c(1:2,4:7,9:11)]
+colnames(tareas_log) <- c('grupo','actividad','prioridad','tarea','unidad','demanda','tiempo_car-des',
                           'comienzo','fin')
 
 #calulate tareas log columns
@@ -146,7 +146,15 @@ add_task_stack <- function (type,day, type_number) {
   mat$loc <- loc
   mat$comp_dia <- NA
   mat$demanda_open <- mat$demanda
-  
+
+  # if WO select only one row from the matrix and re-assing
+  if (type=='WO')  {
+    subtype = sample(c('WO Primaria','WO Secundaria Inyector',
+                       'WO Secundaria Productores','WO Etiles',
+                       'Terminacion','Abandono','Pulling Pesado'),1)
+    rows2keep <- mat$actividad==subtype
+    mat <- mat[rows2keep,]
+  }
 
   stack_log <<- rbind(stack_log, 
               mat[,c( 'grupo','prioridad','type_number','tarea',

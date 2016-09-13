@@ -58,7 +58,7 @@ tareas_i <- fix_format(tareas_i)
 
 #### 02. read files with routes ####
 rutas = read.xls ("Tareas Mantenimiento vMartin.xlsx", sheet = 7, header = TRUE)
-puntos = read.xls ("Tareas Mantenimiento vMArtin.xlsx", sheet = 8, header = TRUE)
+puntos = read.xls ("Tareas Mantenimiento vMartin.xlsx", sheet = 8, header = TRUE)
 
 #clean up
 rutas <- rutas[,c(3:6,2)]
@@ -128,13 +128,6 @@ initialize_cuad_record <- function (day, num_cuad) {
 
 insert_row_record <- function (row) {
   record[nrow(record)+1,]<<-row
-}
-
-end_day_cuads <- function (){
-  
-  ids_to_end <- 17/24-(cuad_record$day_time2free- floor(cuad_record$day_time2free)) <0.5/24
-  cuad_record$end_day[ids_to_end]<- TRUE
-  
 }
 
 complete_task <- function(task,end_task) {
@@ -340,12 +333,6 @@ get_available_cuad_id <- function (cuad_record) {
   return(cuad_id)
 }
 
-verify_end_day <- function() {
-  ids_to_end <- -(cuad_record$day_time2free - floor(cuad_record$day_time2free)) + 17/24 < 0.5/24
-  cuad_record$end_day[ids_to_end] <<- TRUE
-  cuad_record$day_time2free[ids_to_end] <<- floor(cuad_record$day_time2free)[ids_to_end] + 17/24 
-}
-
 day_record <- function(day,num_cuad) {
   #print('day_record')
   #print(day)
@@ -452,7 +439,7 @@ motogenerador <- c('Motogenerador')
 tareas_loop <- list(tareas_e,tareas_m,tareas_i)
 sheet_name_loop <- c('Output Mant. Elect.', 'Output Mant. Mecanic.','Output Mant. Instrument.')
 
-for (tar_id in 1:3){ #} 1:3) { ## principal loop tar_id <- 2
+for (tar_id in 1:3){ ## principal loop tar_id <- 2
 #tar_id <- 2
 
 tareas <- tareas_loop[[tar_id]]
@@ -605,7 +592,7 @@ stack_tot$stack_id <- 1:nrow(stack_tot)
 row.names(stack_tot) <- stack_tot$stack_id
 
 #### 13. loop among days & num_cuad ####
-num_cuad_loop <- c(8,10,12)
+num_cuad_loop <- c(1:12)
 
 out=NULL
 
@@ -617,6 +604,8 @@ stack_tot$comp_perc <- 0
 stack_tot$cuad <- NA
 stack_tot$completed <- FALSE
 stack_tot$end_task_time <- NA
+stack_tot$ini_task_time <- NA
+stack_tot$reprog <- NA
 
 
 
@@ -643,7 +632,7 @@ names(temp_line) <- paste('perc_not_comp', target_out_sorted,sep="-")
 line <- c(num_cuad=num_cuad, temp_line)
 
 # 1. % tareas reprogramadas
-stack_tot$reprog <- (stack_tot$ini_task_time - stack_tot$end_task_time)>1 +0
+stack_tot$reprog <- (- stack_tot$day + stack_tot$end_task_time)>1 +0
 perc_reprog <- tapply(stack_tot$reprog[stack_tot$completed], stack_tot$priority[stack_tot$completed], mean)
 
 temp_line <- perc_reprog[target_out_sorted]
