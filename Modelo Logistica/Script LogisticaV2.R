@@ -404,6 +404,9 @@ stack_log <- stack_log[order(stack_log$prioridad,stack_log$day),]
 
 stack_log <- stack_log[!is.na(stack_log$day),]
 
+#remove the task beyond the end of simulation.
+stack_log <- stack_log[stack_log$day<=total_days,]
+
 #### 06. assignment function ####
 assign <- function (id_task,id_vehicle,ini_eq_free) {
   task <- stack_log[id_task,]
