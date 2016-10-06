@@ -454,7 +454,8 @@ for (type_uni in as.character(recursos$Tipo.Unidad[ids2model])) {
   capacity <- as.numeric(as.character(recursos[type_uni,'Capacidad']))
   
   ids_tasks <- grepl(type_uni,stack_log$unidad)
-  stack_log[ids_tasks,'cantidad_viajes'] <- floor(stack_log[ids_tasks,'demanda']/capacity)+1
+  #stack_log[ids_tasks,'cantidad_viajes'] <- floor(stack_log[ids_tasks,'demanda']/capacity)+1
+  stack_log[ids_tasks,'cantidad_viajes'] <- floor(stack_log[ids_tasks,'demanda']/capacity+0.999)
   
   #correct particularities capacities
   if (type_uni=='Articulado Semi') {
@@ -477,9 +478,10 @@ for (type_uni in as.character(recursos$Tipo.Unidad[ids2model])) {
     add_rest_vehicle(type_uni)
     ids_tasks <- grepl(type_uni,stack_log$unidad)
     total_workload <- sum(stack_log$tiempo_total_viajes[ids_tasks])
-    vehicles_needed <- floor(total_workload/24/361) +1
+    vehicles_needed <- floor(total_workload/24/365) +1
     if(type_uni=='Potable') {
-      vehicles_needed <- floor(total_workload/9/361) +1
+      #vehicles_needed <- floor(total_workload/9/365) +1
+      vehicles_needed <- min(floor(vehicles_needed/3),1)
     }
     if (vehicles_needed==total_vehicle) {
       continue<-F
