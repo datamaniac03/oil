@@ -112,12 +112,17 @@ tiempos.detail <- function(route) {
 
 tiempos.total <- function(route) {
   #chequed!
-  n.points <- length(route)
+  if (route[1]=='Base') {
+    return(c(0,0,0,tiempo_jor))
+  } else {
+    n.points <- length(route)
   #print(c('t.t',as.character(n.points)))
   
-  t.transport <- sum(tiempos.detail(route))
-  t.pozo <- labor*n.points
-  return(c(t.transport,t.pozo,n.points,max(0,tiempo_jor-t.transport-t.pozo)))
+    t.transport <- sum(tiempos.detail(route))
+    t.pozo <- labor*n.points
+    return(c(t.transport,t.pozo,n.points,max(0,tiempo_jor-t.transport-t.pozo)))
+  
+  }
 }
 
 #create a list of times resulting of removing each point
