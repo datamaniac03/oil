@@ -2,7 +2,7 @@
 # Simulation Oil optimization SCRIPT #
 ######################################
 
-#### 00. libraries and delete env ####
+#### 00. libraries and delete env. ####
 rm(list = ls())
 cat("\f")
 require(xlsx)
